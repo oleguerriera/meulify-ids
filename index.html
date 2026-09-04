@@ -1,1 +1,379 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extractor YouTube Music</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        accent: {
+                            DEFAULT: '#2563eb',
+                            hover: '#1d4ed8'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #ffffff;
+            color: #111827;
+        }
+        input:focus, button:focus, select:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between antialiased selection:bg-blue-100 selection:text-blue-900">
 
+    <!-- Capçalera Minimalista -->
+    <header class="w-full border-b border-gray-200 py-6 px-4 sm:px-8 bg-white sticky top-0 z-10">
+        <div class="max-w-4xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <div class="w-3 h-3 bg-accent rounded-full"></div>
+                <h1 class="text-base font-bold tracking-tight">YouTube Music Extractor</h1>
+            </div>
+            <span class="text-xs font-mono uppercase tracking-widest text-gray-400 border border-gray-200 px-2.5 py-1 rounded-full">Engine v3.0 Ultra</span>
+        </div>
+    </header>
+
+    <!-- Contingut Principal -->
+    <main class="w-full max-w-4xl mx-auto px-4 sm:px-8 py-10 flex-grow space-y-8">
+        
+        <!-- Secció de Cerca / Input -->
+        <div class="space-y-4">
+            <div>
+                <h2 class="text-2xl font-bold tracking-tight mb-1">Cerca de cançons i àlbums</h2>
+                <p class="text-sm text-gray-500">Introdueix el terme que vols cercar a YouTube Music per generar l'estructura JSON instantàniament.</p>
+            </div>
+
+            <!-- Formulari de Cerca -->
+            <form id="form_cerca" onsubmit="event.preventDefault(); cercarMusica();" class="flex flex-col sm:flex-row gap-2">
+                <select id="tipus_cerca" class="px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm font-medium text-gray-700 transition">
+                    <option value="track">🎵 Cançó / Tema</option>
+                    <option value="album">💿 Àlbum / Llista</option>
+                </select>
+                <div class="relative flex-grow">
+                    <input type="text" id="input_cerca" placeholder="Ex: Bad Bunny, Rosalía, YHLQMDLG..." class="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm transition pr-10">
+                    <button type="button" onclick="netejarCerca()" id="btn_clear" class="hidden absolute right-3 top-3.5 text-gray-400 hover:text-gray-600 text-xs font-mono">✕</button>
+                </div>
+                <button type="submit" id="btn_cercar" class="px-6 py-3 bg-accent hover:bg-accent-hover text-white text-sm font-semibold rounded-xl transition duration-200 cursor-pointer flex items-center justify-center gap-2 shadow-sm">
+                    <svg id="icona_cerca" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <span>Cercar</span>
+                </button>
+            </form>
+
+            <!-- Banner de Feedback i Estat -->
+            <div id="banner_feedback" class="hidden text-xs font-mono p-4 rounded-xl border flex items-center justify-between transition-all">
+                <div class="flex items-center gap-3">
+                    <div id="spinner_cerca" class="hidden animate-spin h-4 w-4 border-2 border-accent border-t-transparent rounded-full"></div>
+                    <span id="text_feedback"></span>
+                </div>
+                <span id="badge_status" class="text-[10px] uppercase font-bold px-2 py-0.5 rounded"></span>
+            </div>
+        </div>
+
+        <!-- Resultats de Cerca -->
+        <div id="container_resultats" class="hidden space-y-3">
+            <div class="flex items-center justify-between">
+                <h3 class="text-xs font-mono uppercase tracking-wider text-gray-400">Resultats trobats</h3>
+                <span id="comptador_resultats" class="text-xs font-mono text-gray-400"></span>
+            </div>
+            <div id="llista_resultats" class="border border-gray-200 rounded-xl divide-y divide-gray-100 max-h-80 overflow-y-auto bg-white shadow-sm">
+                <!-- Es carregarà dinàmicament -->
+            </div>
+        </div>
+
+        <!-- Llista de Cançons Seleccionades (Estructura final JSON) -->
+        <div class="border-t border-gray-200 pt-8 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h3 class="text-lg font-bold tracking-tight">Cançons Seleccionades</h3>
+                        <span id="badge_total" class="bg-blue-100 text-blue-800 text-xs font-bold font-mono px-2.5 py-0.5 rounded-full">0</span>
+                    </div>
+                    <p class="text-xs text-gray-500">Llista acumulada que s'exportarà en format JSON per a la IA.</p>
+                </div>
+                <div class="flex gap-2">
+                    <button id="btn_buidar" onclick="buidarLlista()" class="hidden px-3 py-2 border border-gray-300 text-gray-600 hover:bg-gray-100 text-xs font-medium rounded-xl transition cursor-pointer">
+                        Buidar
+                    </button>
+                    <button id="btn_descarregar" onclick="descarregarJSON()" class="hidden px-5 py-2.5 bg-black hover:bg-gray-800 text-white text-xs font-semibold rounded-xl transition duration-200 shadow-sm cursor-pointer flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Exportar JSON
+                    </button>
+                </div>
+            </div>
+
+            <div id="container_seleccionades" class="border border-gray-200 rounded-xl p-6 bg-gray-50 min-h-[140px] flex flex-col justify-center items-center text-center text-sm text-gray-400">
+                <svg class="w-8 h-8 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 .895-2 3-2 3 .895 3 2zm12 0c0 1.105-1.343 2-3 2s-3-.895-3-2 .895-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
+                <p>Encara no has afegit cap cançó. Fes una cerca per començar.</p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Peu de pàgina -->
+    <footer class="w-full border-t border-gray-200 py-4 px-4 sm:px-8 text-center text-xs text-gray-400 font-mono">
+        Motor de connexió optimitzat anti-errors CORS.
+    </footer>
+
+    <!-- Lògica JavaScript Resilient -->
+    <script>
+        // Llista d'instàncies d'Invidious estables
+        const INSTANCES = [
+            'https://invidious.nerdvpn.de',
+            'https://inv.hostux.net',
+            'https://vid.puppethead.com',
+            'https://invidious.drgns.space'
+        ];
+
+        let canconsSeleccionades = [];
+        let resultatsCercaActuals = [];
+
+        function setFeedback(msg, type = "info", loading = false) {
+            const banner = document.getElementById("banner_feedback");
+            const text = document.getElementById("text_feedback");
+            const badge = document.getElementById("badge_status");
+            const spinner = document.getElementById("spinner_cerca");
+
+            banner.classList.remove("hidden", "bg-blue-50", "border-blue-200", "text-blue-900", "bg-red-50", "border-red-200", "text-red-900", "bg-green-50", "border-green-200", "text-green-900");
+
+            if (type === "error") {
+                banner.classList.add("bg-red-50", "border-red-200", "text-red-900");
+                badge.innerText = "Error";
+                badge.className = "text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-red-200 text-red-800";
+            } else if (type === "success") {
+                banner.classList.add("bg-green-50", "border-green-200", "text-green-900");
+                badge.innerText = "Èxit";
+                badge.className = "text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-green-200 text-green-800";
+            } else {
+                banner.classList.add("bg-blue-50", "border-blue-200", "text-blue-900");
+                badge.innerText = "Estat";
+                badge.className = "text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-200 text-blue-800";
+            }
+
+            text.innerText = msg;
+            if (loading) spinner.classList.remove("hidden");
+            else spinner.classList.add("hidden");
+        }
+
+        function netejarCerca() {
+            document.getElementById("input_cerca").value = "";
+            document.getElementById("btn_clear").classList.add("hidden");
+            document.getElementById("container_resultats").classList.add("hidden");
+            document.getElementById("banner_feedback").classList.add("hidden");
+        }
+
+        document.getElementById("input_cerca").addEventListener("input", (e) => {
+            const btnClear = document.getElementById("btn_clear");
+            if (e.target.value.length > 0) btnClear.classList.remove("hidden");
+            else btnClear.classList.add("hidden");
+        });
+
+        // Funció intel·ligent amb rotació d'instàncies per evitar errors de connexió
+        async function fetchAmbFallback(endpoint) {
+            let ultimError = null;
+            for (let instance of INSTANCES) {
+                try {
+                    const res = await fetch(`${instance}${endpoint}`, { method: 'GET', mode: 'cors' });
+                    if (res.ok) {
+                        return await res.json();
+                    }
+                } catch (e) {
+                    ultimError = e;
+                }
+            }
+            throw new Error("No s'ha pogut establir connexió amb cap servidor disponible. Torna-ho a provar en uns segons.");
+        }
+
+        async function cercarMusica() {
+            const query = document.getElementById("input_cerca").value.trim();
+            const type = document.getElementById("tipus_cerca").value;
+            const containerRes = document.getElementById("container_resultats");
+            const llistaRes = document.getElementById("llista_resultats");
+
+            if (!query) {
+                setFeedback("Si us plau, escriu un terme de cerca.", "error");
+                return;
+            }
+
+            setFeedback(`Cercant "${query}"...`, "info", true);
+            containerRes.classList.add("hidden");
+
+            try {
+                const searchType = type === "album" ? "playlist" : "video";
+                const data = await fetchAmbFallback(`/api/v1/search?q=${encodeURIComponent(query)}&type=${searchType}`);
+                
+                resultatsCercaActuals = data;
+
+                if (!data || data.length === 0) {
+                    setFeedback("No s'han trobat resultats per a aquesta cerca.", "error");
+                    return;
+                }
+
+                let html = "";
+                data.slice(0, 10).forEach((item, index) => {
+                    const isPlaylist = item.type === "playlist";
+                    const title = item.title || "Sense títol";
+                    const author = item.author || "Artista desconegut";
+                    const id = isPlaylist ? item.playlistId : item.videoId;
+                    const subText = isPlaylist ? `Àlbum / Llista (${item.videoCount || 0} pistes)` : `ID: ${id}`;
+
+                    html += `
+                    <div class="flex items-center justify-between p-3.5 hover:bg-gray-50 transition text-sm">
+                        <div class="overflow-hidden mr-3">
+                            <p class="font-semibold text-gray-900 truncate">${title}</p>
+                            <p class="text-xs text-gray-500 truncate">${author} • <span class="font-mono text-gray-400">${subText}</span></p>
+                        </div>
+                        <button onclick="afegirResultat(${index})" class="px-3.5 py-1.5 bg-gray-100 hover:bg-accent hover:text-white text-gray-800 text-xs rounded-lg font-medium transition duration-150 cursor-pointer flex-shrink-0">
+                            ${isPlaylist ? 'Afegir Àlbum +' : 'Afegir +'}
+                        </button>
+                    </div>
+                    `;
+                });
+
+                llistaRes.innerHTML = html;
+                document.getElementById("comptador_resultats").innerText = `${Math.min(data.length, 10)} resultats`;
+                containerRes.classList.remove("hidden");
+                setFeedback("Cerca completada amb èxit.", "success");
+
+            } catch (err) {
+                console.error(err);
+                setFeedback(`Error: ${err.message}`, "error");
+            }
+        }
+
+        async function afegirResultat(index) {
+            const item = resultatsCercaActuals[index];
+            if (!item) return;
+
+            if (item.type === "playlist") {
+                setFeedback(`Carregant pistes de l'àlbum "${item.title}"...`, "info", true);
+                try {
+                    const playlistData = await fetchAmbFallback(`/api/v1/playlists/${item.playlistId}`);
+                    let noves = 0;
+                    
+                    playlistData.videos.forEach(v => {
+                        const canco = {
+                            title: v.title,
+                            artist: playlistData.author || v.author || "Desconegut",
+                            youtube_id: v.videoId,
+                            url: `https://www.youtube.com/watch?v=${v.videoId}`
+                        };
+                        if (!canconsSeleccionades.some(c => c.youtube_id === v.videoId)) {
+                            canconsSeleccionades.push(canco);
+                            noves++;
+                        }
+                    });
+
+                    renderitzarSeleccionades();
+                    setFeedback(`Àlbum afegit correctament! (+${noves} cançons)`, "success");
+
+                } catch (e) {
+                    setFeedback("No s'ha pogut carregar l'àlbum complet.", "error");
+                }
+            } else {
+                const canco = {
+                    title: item.title,
+                    artist: item.author || "Desconegut",
+                    youtube_id: item.videoId,
+                    url: `https://www.youtube.com/watch?v=${item.videoId}`
+                };
+
+                if (!canconsSeleccionades.some(c => c.youtube_id === canco.youtube_id)) {
+                    canconsSeleccionades.push(canco);
+                    renderitzarSeleccionades();
+                    setFeedback(`Afegida: "${canco.title}"`, "success");
+                } else {
+                    setFeedback("Aquesta cançó ja està afegida a la llista.", "info");
+                }
+            }
+        }
+
+        function eliminarCanco(index) {
+            canconsSeleccionades.splice(index, 1);
+            renderitzarSeleccionades();
+            setFeedback("Cançó eliminada de la selecció.", "info");
+        }
+
+        function buidarLlista() {
+            canconsSeleccionades = [];
+            renderitzarSeleccionades();
+            setFeedback("S'ha buidat la llista de cançons.", "info");
+        }
+
+        function renderitzarSeleccionades() {
+            const container = document.getElementById("container_seleccionades");
+            const badgeTotal = document.getElementById("badge_total");
+            const btnDesc = document.getElementById("btn_descarregar");
+            const btnBuidar = document.getElementById("btn_buidar");
+
+            badgeTotal.innerText = canconsSeleccionades.length;
+
+            if (canconsSeleccionades.length === 0) {
+                container.className = "border border-gray-200 rounded-xl p-6 bg-gray-50 min-h-[140px] flex flex-col justify-center items-center text-center text-sm text-gray-400";
+                container.innerHTML = `
+                    <svg class="w-8 h-8 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 .895-2 3-2 3 .895 3 2zm12 0c0 1.105-1.343 2-3 2s-3-.895-3-2 .895-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
+                    <p>Encara no has afegit cap cançó. Fes una cerca per començar.</p>
+                `;
+                btnDesc.classList.add("hidden");
+                btnBuidar.classList.add("hidden");
+                return;
+            }
+
+            container.className = "border border-gray-200 rounded-xl divide-y divide-gray-100 bg-white overflow-hidden text-left shadow-sm";
+            let html = "";
+            canconsSeleccionades.forEach((c, i) => {
+                html += `
+                <div class="flex items-center justify-between p-3.5 hover:bg-gray-50 transition text-sm">
+                    <div class="flex items-center space-x-3 overflow-hidden">
+                        <span class="font-mono text-xs text-gray-400 w-5">${i + 1}.</span>
+                        <div class="truncate">
+                            <p class="font-semibold text-gray-900 truncate">${c.title}</p>
+                            <p class="text-xs text-gray-500 truncate">${c.artist} • <span class="font-mono text-gray-400">${c.youtube_id}</span></p>
+                        </div>
+                    </div>
+                    <button onclick="eliminarCanco(${i})" class="text-gray-400 hover:text-red-600 text-xs px-2 py-1 transition cursor-pointer font-mono" title="Eliminar">
+                        ✕
+                    </button>
+                </div>
+                `;
+            });
+
+            container.innerHTML = html;
+            btnDesc.classList.remove("hidden");
+            btnBuidar.classList.remove("hidden");
+        }
+
+        function descarregarJSON() {
+            if (canconsSeleccionades.length === 0) return;
+
+            const estructuraJSON = {
+                generator: "YouTube Music AI JSON Extractor",
+                created_at: new Date().toISOString(),
+                total_tracks: canconsSeleccionades.length,
+                tracks: canconsSeleccionades
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(estructuraJSON, null, 4));
+            const dlAnchorElem = document.createElement('a');
+            dlAnchorElem.setAttribute("href", dataStr);
+            dlAnchorElem.setAttribute("download", `youtube_music_export_${Date.now()}.json`);
+            document.body.appendChild(dlAnchorElem);
+            dlAnchorElem.click();
+            dlAnchorElem.remove();
+
+            setFeedback("Fitxer JSON exportat amb èxit!", "success");
+        }
+    </script>
+</body>
+</html>
