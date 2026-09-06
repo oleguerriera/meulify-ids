@@ -67,7 +67,7 @@
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-slate-400 group-hover:text-brand-400 mb-2 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                             </svg>
-                            <span class="text-xs font-medium text-slate-300 text-center">Tria o arrossega vídeos (MP4, MOV, etc.)</span>
+                            <span class="text-xs font-medium text-slate-300 text-center">Tria o arrossega vídeos (MP4, MOV, HEVC, etc.)</span>
                             <input type="file" id="fileInput" multiple accept="video/*" class="hidden">
                         </label>
                         <div id="fileCount" class="text-xs text-slate-400 mt-2 text-right">Cap fitxer seleccionat</div>
@@ -153,7 +153,6 @@
 
     <script type="module">
         import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
-        import { fetchFile } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js';
 
         const ffmpeg = new FFmpeg();
         
@@ -176,37 +175,87 @@
 
         let totalFilesToProcess = 0;
         let currentFileIndex = 0;
-        let lastKnownProgress = 0;
 
-        // Feedback detallat de progrés d'FFmpeg
+        // Feedback detallat de progrés de conversió d'FFmpeg
         ffmpeg.on('progress', ({ progress, time }) => {
             let percentVal = progress * 100;
             if (isNaN(percentVal) || percentVal < 0) percentVal = 0;
             if (percentVal > 100) percentVal = 100;
-            
-            lastKnownProgress = percentVal;
 
             const formattedPercent = percentVal.toFixed(2).replace('.', ',');
             progressBar.style.width = `${percentVal}%`;
             percentageLabel.innerText = `${formattedPercent}%`;
             
             if (time) {
-                detailsLog.innerText = `Processant fotogrames... Temps transcorregut: ${(time / 1000000).toFixed(1)}s`;
+                detailsLog.innerText = `Processant fotogrames... Temps: ${(time / 1000000).toFixed(1)}s`;
             }
         });
 
-        // Inicialització asíncrona del motor FFmpeg compatible amb Safari (Single-Thread)
+        // Funció auxiliar per descarregar amb barra de progrés real (amb suport per Content-Length)
+        async function fetchWithProgress(url, labelName) {
+            progressCard.classList.remove('hidden');
+            currentTaskLabel.innerText = `Descarregant ${labelName}...`;
+            
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Error HTTP: ${response.status}`);
+            
+            const contentLength = response.headers.get('content-length');
+            if (!contentLength) {
+                return await response.arrayBuffer();
+            }
+
+            const total = parseInt(contentLength, 10);
+            let loaded = 0;
+
+            const reader = response.body.getReader();
+            const chunks = [];
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                loaded += value.length;
+                
+                const percentVal = (loaded / total) * 100;
+                const formattedPercent = percentVal.toFixed(2).replace('.', ',');
+                progressBar.style.width = `${percentVal}%`;
+                percentageLabel.innerText = `${formattedPercent}%`;
+                detailsLog.innerText = `Baixat: ${(loaded / (1024*1024)).toFixed(1)} MB de ${(total / (1024*1024)).toFixed(1)} MB`;
+            }
+
+            let position = 0;
+            const result = new Uint8Array(loaded);
+            for (let chunk of chunks) {
+                result.set(chunk, position);
+                position += chunk.length;
+            }
+            return result.buffer;
+        }
+
+        // Inicialització asíncrona amb descàrrega controlada i percentatges per a Safari / mòbils
         async function initEngine() {
             try {
-                statusText.innerText = "Descarregant mòduls WebAssembly (Safari compatible)...";
+                const coreURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js';
+                const wasmURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm';
+
+                // Descarreguem els fitxers amb percentatge visible abans d'arrencar
+                const coreBuffer = await fetchWithProgress(coreURL, 'ffmpeg-core.js');
+                const wasmBuffer = await fetchWithProgress(wasmURL, 'ffmpeg-core.wasm');
+
+                statusText.innerText = "Carregant motor WebAssembly al navegador...";
+                currentTaskLabel.innerText = "Inicialitzant entorn virtual...";
+                progressBar.style.width = '100%';
+                percentageLabel.innerText = '100,00%';
+
                 await ffmpeg.load({
-                    coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
-                    wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm',
+                    core: coreBuffer,
+                    wasm: wasmBuffer,
                 });
                 
                 engineStatusBadge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
                 engineStatusBadge.querySelector('span').className = "w-2 h-2 rounded-full bg-emerald-400";
-                statusText.innerText = "Motor preparat i actiu";
+                statusText.innerText = "Motor preparat i compatible amb Safari";
+                progressCard.classList.add('hidden');
                 
                 if (fileInput.files.length > 0) {
                     convertBtn.disabled = false;
@@ -216,6 +265,7 @@
                 engineStatusBadge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20";
                 engineStatusBadge.querySelector('span').className = "w-2 h-2 rounded-full bg-red-400";
                 statusText.innerText = "Error carregant el motor";
+                currentTaskLabel.innerText = "Error de descàrrega WebAssembly";
             }
         }
 
@@ -225,7 +275,7 @@
             const count = fileInput.files.length;
             if (count > 0) {
                 fileCount.innerText = `${count} fitxer(s) seleccionat(s)`;
-                if (statusText.innerText === "Motor preparat i actiu") {
+                if (statusText.innerText.includes("Motor preparat")) {
                     convertBtn.disabled = false;
                 }
             } else {
@@ -254,15 +304,16 @@
                 fileProgressIndicator.innerText = `Fitxer ${currentFileIndex} de ${totalFilesToProcess}`;
                 progressBar.style.width = '0%';
                 percentageLabel.innerText = '0,00%';
-                detailsLog.innerText = 'Carregant a la memòria virtual...';
+                detailsLog.innerText = 'Carregant vídeo a la memòria...';
 
                 const ext = file.name.split('.').pop();
                 const inputName = `input_${i}.${ext}`;
                 const outputName = `output_${i}.webp`;
 
                 try {
-                    // Escriptura del fitxer
-                    await ffmpeg.writeFile(inputName, await fetchFile(file));
+                    // Escriptura del fitxer de vídeo
+                    const arrayBuffer = await file.arrayBuffer();
+                    await ffmpeg.writeFile(inputName, new Uint8Array(arrayBuffer));
 
                     const width = document.getElementById('width').value;
                     const height = document.getElementById('height').value;
@@ -306,7 +357,7 @@
                     card.innerHTML = `
                         <div>
                             <div class="w-full h-36 bg-slate-950 rounded-lg overflow-hidden mb-3 flex items-center justify-center border border-slate-800">
-                                <img src="${url}" class="max-h-full max-w-full object-contain" alt="Prevenda WebP">
+                                <img src="${url}" class="max-h-full max-w-full object-contain" alt="Previsualització WebP">
                             </div>
                             <h3 class="text-xs font-semibold text-slate-200 truncate mb-1" title="${file.name}">${file.name}</h3>
                             <p class="text-[11px] text-slate-400 mb-3">Mida: <span class="text-slate-200 font-mono">${sizeMB} MB</span></p>
@@ -324,7 +375,7 @@
                     successCount++;
                     resultCount.innerText = `${successCount} resultats`;
 
-                    // Netejar fitxers temporals de la memòria d'FFmpeg
+                    // Netejar fitxers temporals
                     await ffmpeg.deleteFile(inputName);
                     await ffmpeg.deleteFile(outputName);
 
