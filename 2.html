@@ -180,12 +180,10 @@
 
         // Feedback detallat de progrés d'FFmpeg
         ffmpeg.on('progress', ({ progress, time }) => {
-            // El progrés pot venir com a float (0 a 1)
             let percentVal = progress * 100;
             if (isNaN(percentVal) || percentVal < 0) percentVal = 0;
             if (percentVal > 100) percentVal = 100;
             
-            // Si el progrés s'encalla al principi o final, evitem salts estranys però mantenim fluïdesa
             lastKnownProgress = percentVal;
 
             const formattedPercent = percentVal.toFixed(2).replace('.', ',');
@@ -197,13 +195,13 @@
             }
         });
 
-        // Inicialització asíncrona del motor FFmpeg amb feedback visual pas a pas
+        // Inicialització asíncrona del motor FFmpeg compatible amb Safari (Single-Thread)
         async function initEngine() {
             try {
-                statusText.innerText = "Descarregant mòduls WebAssembly...";
+                statusText.innerText = "Descarregant mòduls WebAssembly (Safari compatible)...";
                 await ffmpeg.load({
-                    coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js',
-                    wasmURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm',
+                    coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
+                    wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm',
                 });
                 
                 engineStatusBadge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
@@ -217,7 +215,7 @@
                 console.error(err);
                 engineStatusBadge.className = "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20";
                 engineStatusBadge.querySelector('span').className = "w-2 h-2 rounded-full bg-red-400";
-                statusText.innerText = "Error carregant el motor (comprova el servidor local)";
+                statusText.innerText = "Error carregant el motor";
             }
         }
 
